@@ -6,75 +6,60 @@ import math
 import enum
 
 
-class Chunk(enum.Enum):
-    BRACE = 1
-    BRACKET = 2
+class Enclosure(enum.Enum):
+    NONE = 0
+    BRACKET = 1
+    BRACE = 2
     PARENTHESIS = 3
+    SQUEEZE = 4
 
 
-def process_subsystem(line):
-    brace = 0
-    parenth = 0
-    bracket = 0
+ENCLOSURE_MAP = {'{': Enclosure.BRACKET,
+                 '}': Enclosure.BRACKET,
+                 '[': Enclosure.BRACE,
+                 ']': Enclosure.BRACE,
+                 '(': Enclosure.PARENTHESIS,
+                 ')': Enclosure.PARENTHESIS,
+                 '<': Enclosure.SQUEEZE,
+                 '>': Enclosure.SQUEEZE}
 
-    starting_chunk_type = None
-    open_brackets = []
+CLOSE_MAP = {Enclosure.SQUEEZE: '>',
+             Enclosure.BRACE: ']',
+             Enclosure.PARENTHESIS: ')',
+             Enclosure.BRACKET: '}',
+             Enclosure.NONE: 'ERROR'}
 
+OPEN_MAP = {Enclosure.SQUEEZE: '<',
+            Enclosure.BRACE: '[',
+            Enclosure.PARENTHESIS: '(',
+            Enclosure.BRACKET: '{',
+            Enclosure.NONE: 'ERROR'}
+OPEN_SET = set('{([<')
+CLOSE_SET = set('})]>')
+
+
+def process_line(line):
+    counts = {Enclosure.SQUEEZE: 0,
+              Enclosure.BRACE: 0,
+              Enclosure.PARENTHESIS: 0,
+              Enclosure.BRACKET: 0}
+
+    stack = []
     for i, c in enumerate(line):
-        incorrect_pair = False
-        closing_chunk = False
-        if starting_chunk_type is None:
-            starting_chunk_type = c
+        encl_type = ENCLOSURE_MAP[c]
+        popped = Enclosure.NONE
+        if c in OPEN_SET:
+            counts[encl_type] += 1
+            stack.append(encl_type)
+        elif c in CLOSE_SET:
+            counts[encl_type] -= 1
+            popped = stack.pop()
 
-        popped = ''
-        if c == '(':
-            parenth += 1
-            open_brackets.append(c)
-        elif c == '{':
-            bracket += 1
-            open_brackets.append(c)
-        elif c == '[':
-            brace += 1
-            open_brackets.append(c)
-        elif c == ')':
-            parenth -= 1
-            popped = open_brackets.pop()
-        elif c == '}':
-            bracket -= 1
-            popped = open_brackets.pop()
-        elif c == ']':
-            brace -= 1
-            popped = open_brackets.pop()
-
-        if brace < 0 or parenth < 0 or bracket < 0:
-            print(f"underflow Expected {starting_chunk_type}, but found {c} instead.")
-            return (c, i)
-
-        expected = None
-        if (popped == '{' and c != '}') or (popped not in ['{', ''] and c == '}'):
-            incorrect_pair = True
-        elif (popped == '(' and c != ')') or (popped not in ['(', ''] and c == ')'):
-            incorrect_pair = True
-        if (popped == '[' and c != ']') or (popped not in ['[', ''] and c == ']'):
-            incorrect_pair = True
-
-        if incorrect_pair is True:
-            print(f"expected {popped}")
-
-        if closing_chunk is True and any([x > 0 for x in [brace, parenth, bracket]]):
-            # print(f"brace {brace}, parenth {parenth}, bracket {bracket}")
-            # print(f"extra Expected {starting_chunk_type}, but found {c} instead.")
-            print(f"extra found {c} instead.")
-            return (c, i)
-
-
-
-    print(f"brace {brace}, parenth {parenth}, bracket {bracket}")
-    if starting_chunk_type is not None or any([brace, parenth, bracket]):
-        # print(f"end Expected {starting_chunk_type}, but found {c} instead.")
-        print(f"brace {brace}, parenth {parenth}, bracket {bracket}")
-        print(f"end extra value found {c}")
-
+        # Closed out of order
+        if popped != Enclosure.NONE and encl_type != popped:
+            expected = CLOSE_MAP[popped]
+            print(f"Expected {expected} but found {c} instead: {i}")
+            return (expected, c, i)
 
 
 parser = argparse.ArgumentParser()
@@ -85,8 +70,5 @@ with open(args.file, "r") as f:
     data = [i for i in f.read().splitlines()]
 
 
-for s, i in enumerate(data):
-    print(s)
-    process_subsystem(i)
-    print("")
+res = [process_line(i) for i in data]
 
