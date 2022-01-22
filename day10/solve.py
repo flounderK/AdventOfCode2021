@@ -61,6 +61,12 @@ def process_line(line):
             print(f"Expected {expected} but found {c} instead: {i}")
             return (expected, c, i)
 
+    newline = line
+    # past here, error checking found no errors
+    while stack:
+        newline += CLOSE_MAP[stack.pop()]
+    return newline
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-f", "--file", default="input.txt")
@@ -70,5 +76,12 @@ with open(args.file, "r") as f:
     data = [i for i in f.read().splitlines()]
 
 
-res = [process_line(i) for i in data]
+errors = []
+finished_entries = []
+for i, line in enumerate(data):
+    v = process_line(line)
+    if isinstance(v, tuple):
+        errors.append((i, v))
+    elif isinstance(v, str):
+        finished_entries.append((i, v))
 
