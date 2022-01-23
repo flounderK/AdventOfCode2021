@@ -61,7 +61,7 @@ def process_line(line):
             print(f"Expected {expected} but found {c} instead: {i}")
             return (expected, c, i)
 
-    newline = line
+    newline = ''
     # past here, error checking found no errors
     while stack:
         newline += CLOSE_MAP[stack.pop()]
@@ -76,6 +76,16 @@ with open(args.file, "r") as f:
     data = [i for i in f.read().splitlines()]
 
 
+p1_point_values = {')': 3,
+                   ']': 57,
+                   '}': 1197,
+                   '>': 25137}
+
+p2_point_values = {')': 1,
+                   ']': 2,
+                   '}': 3,
+                   '>': 4}
+
 errors = []
 finished_entries = []
 for i, line in enumerate(data):
@@ -85,3 +95,21 @@ for i, line in enumerate(data):
     elif isinstance(v, str):
         finished_entries.append((i, v))
 
+first_illegal_chr = [i[1][1] for i in errors]
+part1 = sum([p1_point_values[i] for i in first_illegal_chr])
+print(f"part 1: {part1}")
+
+p2_scores = []
+for _, line in finished_entries:
+    score = 0
+    for i in line:
+        score *= 5
+        score += p2_point_values[i]
+    p2_scores.append(score)
+    # print(f"line: '{line}' score {score}")
+
+
+p2_scores.sort()
+p2_res = p2_scores[len(p2_scores) // 2]
+
+print(f"part 2: {p2_res}")
