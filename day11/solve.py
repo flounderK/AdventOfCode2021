@@ -109,6 +109,32 @@ class CoordData:
             print("")
         print("")
 
+    def do_step(self):
+        flashed = set()
+        # initial increment
+        for xy, coord in self.COORD_DATA_MAP.items():
+            coord.increment(mod=10)
+            if coord.value == 0:
+                flashed.add(coord)
+
+        processed_flashes = set()
+        flashes_to_process = flashed.copy()
+        while len(flashes_to_process) > 0:
+            coord = flashes_to_process.pop()
+            processed_flashes.add(coord)
+            for xy in coord.adjacent:
+                adj_coord = self.COORD_DATA_MAP[xy]
+                # ignore if it has flashed this turn
+                if adj_coord in flashed:
+                    continue
+
+                adj_coord.increment(mod=10)
+                if adj_coord.value == 0:
+                    flashes_to_process.add(adj_coord)
+                    flashed.add(adj_coord)
+
+        return flashed
+
 
 class Coord:
 
@@ -118,6 +144,15 @@ class Coord:
         self.value = value
         self._directions = directions
         self.adjacent = adjacent
+        for k, v in directions.items():
+            setattr(self, k, v)
+
+    def increment(self, mod=None):
+        self.value += 1
+        if mod is not None:
+            self.value %= mod
+
+    def update_directions(self, directions):
         for k, v in directions.items():
             setattr(self, k, v)
 
@@ -150,6 +185,21 @@ with open(args.file, "r") as f:
 # store a map of all of the values in the grid
 grid = CoordData(data)
 
-low_points = [i for i in grid.COORD_DATA_LIST if i.is_low_point()]
-for i in low_points:
-    grid.print_with_marks(grid.get_basin_for(i))
+total_flashes = 0
+count = 0
+for i in range(100):
+    count += 1
+    flashed = grid.do_step()
+    total_flashes += len(flashed)
+
+print(f"part 1: {total_flashes}")
+
+all_flashed = False
+while all_flashed is False:
+    count += 1
+    grid.do_step()
+    all_vals = set(c.value for c in grid.COORD_DATA_LIST)
+    if len(all_vals) == 1 and list(all_vals)[0] == 0:
+        all_flashed = True
+
+print(f"part 2 {count}")
