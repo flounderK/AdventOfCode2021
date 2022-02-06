@@ -2,14 +2,21 @@
 import argparse
 import re
 from collections import defaultdict, namedtuple
-import math
+from math import prod
 import ctypes
 from ctypes import sizeof, memmove, byref, c_ubyte, c_ushort
 from struct import unpack
 import struct
 import enum
 
-known_type_ids = {4: 'LITERAL'}
+known_type_ids = {0: 'SUM',
+                  1: 'PRODUCT',
+                  2: 'MINIMUM',
+                  3: 'MAXIMUM',
+                  4: 'LITERAL',
+                  5: 'GREATER_THAN',
+                  6: 'LESS_THAN',
+                  7: 'EQUAL_TO'}
 # make a quick enum for packet types
 PacketTypeID = enum.IntEnum('PacketTypeID',
                             ' '.join(known_type_ids.get(i, 'T%X' % i)
@@ -81,22 +88,19 @@ def calc_padding_bits(consumed, align_to=8):
         padding = 0
     else:
         padding = ((d+1)*8) - consumed
-    print(f"padding {padding}")
+    # print(f"padding {padding}")
     return padding
 
 
 def parse_bitstream(bitstream, start_ind=0, calc_padding=False):
-    try:
-        packet = {}
-        packet['start_ind'] = start_ind
-        packet['version'] = int(bitstream[VERSION_SLICE], 2)
-        type_id = PacketTypeID(int(bitstream[TYPE_ID_SLICE], 2))
-        packet['type_id'] = type_id
-    except Exception as err:
-        import ipdb;ipdb.set_trace()
+    packet = {}
+    packet['start_ind'] = start_ind
+    packet['version'] = int(bitstream[VERSION_SLICE], 2)
+    type_id = PacketTypeID(int(bitstream[TYPE_ID_SLICE], 2))
+    packet['type_id'] = type_id
     consumed = 0
     if type_id == PacketTypeID.LITERAL:
-        print("parsing literal")
+        # print("parsing literal")
         consumed += TYPE_ID_SLICE.stop
         packet['header_bits'] = bitstream[:consumed]
         # decode literal
@@ -124,7 +128,7 @@ def parse_bitstream(bitstream, start_ind=0, calc_padding=False):
         subpacket_bits_consumed = 0
         subpackets = []
         while subpacket_bits_consumed < total_length_in_bits:
-            print(f"parsing subpacket 1 {subpacket_bits}")
+            # print(f"parsing subpacket 1 {subpacket_bits}")
             retnd, new_subpacket_bits = parse_bitstream(subpacket_bits,
                                                         start_ind=consumed,
                                                         calc_padding=False)
@@ -141,22 +145,21 @@ def parse_bitstream(bitstream, start_ind=0, calc_padding=False):
         packet['bits'] = bitstream[:consumed]
         packet['body_bits'] = bitstream[len(packet['header_bits']):consumed]
         return packet, bitstream[consumed:]
-
+    # known number of subpackets
     elif length_type_id == 1:
         num_subpackets = int(bitstream[NUM_SUBPACKETS_IMM_CONTD_SLICE], 2)
         packet['num_subpackets'] = num_subpackets
         consumed += NUM_SUBPACKETS_IMM_CONTD_SLICE.stop
         packet['header_bits'] = bitstream[:consumed]
         subpacket_bits = bitstream[consumed:]
-        original_subpackets_len = len(subpacket_bits)
         subpackets = []
         i = 0
         while i < num_subpackets:
-            print(f"parsing subpacket 2 {subpacket_bits}")
-            print(f"consumed {consumed}")
+            # print(f"parsing subpacket 2 {subpacket_bits}")
+            # print(f"consumed {consumed}")
             retnd, new_subpacket_bits = parse_bitstream(subpacket_bits,
-                                                    start_ind=consumed,
-                                                    calc_padding=False)
+                                                        start_ind=consumed,
+                                                        calc_padding=False)
             subpackets.append(retnd)
             # to calculate padding correctly
             consumed += len(subpacket_bits) - len(new_subpacket_bits)
@@ -171,13 +174,66 @@ def parse_bitstream(bitstream, start_ind=0, calc_padding=False):
         return packet, bitstream[consumed:]
 
 
-# def parse_bitstream_with_padding(bitstream):
-#     packet, _ = parse_bitstream(bitstream, start_ind=0)
+def packet_ast_codegen(packet):
+    """Do the lazy thing and just generate code that python
+    can easily handle"""
+    if not isinstance(packet, dict):
+        raise Exception("Non dict packet")
 
+    type_id = packet['type_id']
+    if type_id == PacketTypeID.LITERAL:
+        return str(packet['literal'])
+
+    # make bool values express as integers
+    open_token = 'int('
+    close_token = ')'
+    comparator_token = None
+
+    if type_id == PacketTypeID.SUM:
+        open_token = 'sum(['
+        close_token = '])'
+    elif type_id == PacketTypeID.PRODUCT:
+        open_token = 'prod(['
+        close_token = '])'
+    elif type_id == PacketTypeID.MINIMUM:
+        open_token = 'min(['
+        close_token = '])'
+    elif type_id == PacketTypeID.MAXIMUM:
+        open_token = 'max(['
+        close_token = '])'
+    elif type_id == PacketTypeID.GREATER_THAN:
+        comparator_token = '>'
+    elif type_id == PacketTypeID.LESS_THAN:
+        comparator_token = '<'
+    elif type_id == PacketTypeID.EQUAL_TO:
+        comparator_token = '=='
+
+    subpackets = packet.get('subpackets', [])
+    child_node_values = []
+    for i in subpackets:
+        child_node_values.append(packet_ast_codegen(i))
+
+    if comparator_token is None:
+        result = "%s%s%s" % (open_token,
+                             ', '.join(child_node_values),
+                             close_token)
+    else:
+        lchild, rchild = child_node_values
+        result = "%s%s %s %s%s" % (open_token,
+                                   lchild,
+                                   comparator_token,
+                                   rchild,
+                                   close_token)
+
+    return result
 
 
 packet, _ = parse_bitstream(bitstream)
 
 part1_res = sum_version_numbers(packet)
 print(f"part 1: {part1_res}")
+a = packet_ast_codegen(packet)
+print(a)
+part2_res = eval(a)
 
+print(f"part 2: {part2_res}")
